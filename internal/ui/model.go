@@ -409,7 +409,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // vizModes lists selectable visualizer modes.
-func vizModes() []string { return []string{"auto", "bars", "vu", "wave", "off"} }
+func vizModes() []string { return []string{"auto", "bars", "vu", "wave", "dots", "off"} }
 
 // cycleViz moves vizMode one step, wrapping around.
 func (m *Model) cycleViz(step int) {
@@ -437,6 +437,8 @@ func (m *Model) effViz() VizStyle {
 		return VizVU
 	case "wave":
 		return VizWave
+	case "dots":
+		return VizDots
 	default: // auto
 		return m.theme.Viz
 	}
@@ -468,6 +470,8 @@ func (m Model) vizRows(rightW int) []string {
 	case VizWave:
 		cols := m.viz.Wave(m.player.SpectrumPCM(1024), w)
 		return visualizer.RenderWaveCols(cols, w, 5, m.theme.Accent, m.theme.Dim)
+	case VizDots:
+		return visualizer.RenderDots(m.levels, 6, m.theme.Accent, m.theme.Dim)
 	default:
 		if len(m.levels) == 0 {
 			return nil

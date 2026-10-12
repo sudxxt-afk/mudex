@@ -152,3 +152,58 @@ func TestRenderWaveBadHex(t *testing.T) {
 	RenderVU(0.5, 0.8, 20, "zzz", "", "not-a-color")
 	RenderWave([]float64{0.1, -0.2}, 16, 6, "!!!", "xx")
 }
+
+func TestDotsDimsAndSymmetry(t *testing.T) {
+	lv := []float64{0.1, 0.5, 0.9, 0.3, 0.7, 0.2, 0.6, 0.4}
+	rows := RenderDots(lv, 6, "#FFFFFF", "#888888")
+	if len(rows) != 6 {
+		t.Fatalf("want 6 rows got %d", len(rows))
+	}
+	for _, row := range rows {
+		cells := splitCells(row)
+		if len(cells) != len(lv) {
+			t.Fatalf("want %d cells got %d (%q)", len(lv), len(cells), row)
+		}
+		for i := 0; i < len(cells)/2; i++ {
+			if cells[i] != cells[len(cells)-1-i] {
+				t.Fatalf("row not symmetric: %q", row)
+			}
+		}
+	}
+	joined := strings.Join(rows, "\n")
+	if !strings.Contains(joined, "●") {
+		t.Fatal("want filled dots")
+	}
+}
+
+func TestDotsClamp(t *testing.T) {
+	rows := RenderDots([]float64{2.0, -1.0}, 4, "nope", "bad")
+	if len(rows) != 4 {
+		t.Fatalf("want 4 rows got %d", len(rows))
+	}
+}
+
+// splitCells strips ANSI escapes and chunks a row into 2-rune cells
+// (glyph + separator space).
+func splitCells(s string) []string {
+	var plain []rune
+	inEsc := false
+	for _, r := range s {
+		if inEsc {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				inEsc = false
+			}
+			continue
+		}
+		if r == 0x1b {
+			inEsc = true
+			continue
+		}
+		plain = append(plain, r)
+	}
+	var cells []string
+	for i := 0; i+1 < len(plain); i += 2 {
+		cells = append(cells, string(plain[i]))
+	}
+	return cells
+}

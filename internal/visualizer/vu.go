@@ -231,3 +231,66 @@ func RenderWaveCols(colVal []float64, width, height int, fgHex, dimHex string) [
 	}
 	return rows
 }
+
+// RenderDots draws a symmetric dot-matrix spectrum: the left half mirrors
+// the right half around the center. Filled cells are bright dots, the
+// leading edge is a dimmer small dot for smoothness.
+func RenderDots(levels []float64, height int, fgHex, dimHex string) []string {
+	if height < 2 {
+		height = 2
+	}
+	if height > 10 {
+		height = 10
+	}
+	n := len(levels)
+	if n < 4 {
+		n = 4
+	}
+	if n > 40 {
+		n = 40
+	}
+	half := n / 2
+	fr, fg, fb := parseHexColor(fgHex)
+	dr, dg, db := parseHexColor(dimHex)
+	fgCode := ansiRGB(fr, fg, fb)
+	dimCode := ansiRGB(dr, dg, db)
+	reset := "\x1b[0m"
+
+	// symmetric values: mirror the first half of levels
+	val := make([]float64, n)
+	for i := 0; i < half; i++ {
+		v := 0.0
+		if i < len(levels) {
+			v = levels[i]
+		}
+		if v < 0 {
+			v = 0
+		}
+		if v > 1 {
+			v = 1
+		}
+		val[i], val[n-1-i] = v, v
+	}
+
+	rows := make([]string, height)
+	for r := 0; r < height; r++ {
+		var sb strings.Builder
+		b := height - 1 - r // cell index from bottom
+		for i := 0; i < n; i++ {
+			f := val[i] * float64(height)
+			full := int(f)
+			part := f - float64(full)
+			switch {
+			case b < full:
+				sb.WriteString(fgCode + "●" + reset)
+			case b == full && part > 0.15:
+				sb.WriteString(dimCode + "·" + reset)
+			default:
+				sb.WriteString(" ")
+			}
+			sb.WriteString(" ")
+		}
+		rows[r] = sb.String()
+	}
+	return rows
+}

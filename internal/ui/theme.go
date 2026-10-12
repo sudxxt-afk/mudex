@@ -15,6 +15,7 @@ const (
 	VizBars VizStyle = iota
 	VizVU
 	VizWave
+	VizDots
 )
 
 // Theme describes UI colors, cover grading, visualizer style and borders.
@@ -61,7 +62,7 @@ func AllThemes() []Theme {
 			ID: "phosphor", Title: "#5CFF5C", Text: "#3FD83F", Dim: "#1E7A1E",
 			Accent: "#5CFF5C", Accent2: "#2EA82E", Peak: "#E8FF66",
 			SelBG: "#0D1A0D", BorderFG: "#245C24",
-			Grade: cover.GradePhosphor, Viz: VizBars, RoundedBorder: true,
+			Grade: cover.GradePhosphor, Viz: VizDots, RoundedBorder: true,
 		},
 		{
 			// Gruvbox light
