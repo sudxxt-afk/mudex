@@ -86,14 +86,16 @@ func contrast(a, b float64) float64 {
 	return (a + 0.05) / (b + 0.05)
 }
 
-// TestThemeContrast guards palettes against eye-searing combos:
-// body text must read well on the theme background.
+// TestThemeContrast guards palettes against eye-searing combos.
+// Panels are transparent (no background fills), so contrast is checked
+// against the assumed terminal background: white for paper, black otherwise.
 func TestThemeContrast(t *testing.T) {
 	for _, th := range AllThemes() {
-		if th.AppBG == "" {
-			continue // transparent: terminal default unknown
+		assumed := "#000000"
+		if th.ID == "paper" {
+			assumed = "#FFFFFF"
 		}
-		bg := hexLuminance(t, th.AppBG)
+		bg := hexLuminance(t, assumed)
 		if c := contrast(hexLuminance(t, th.Text), bg); c < 4.5 {
 			t.Errorf("%s: Text/BG contrast %.2f < 4.5", th.ID, c)
 		}

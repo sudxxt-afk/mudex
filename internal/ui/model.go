@@ -405,9 +405,6 @@ func (m Model) View() string {
 		border = lipgloss.NormalBorder()
 	}
 	panel := lipgloss.NewStyle().Border(border).BorderForeground(lipgloss.Color(th.BorderFG)).Padding(0, 1)
-	if th.AppBG != "" {
-		panel = panel.Background(lipgloss.Color(th.AppBG))
-	}
 
 	// left: file list
 	leftW := m.width * 42 / 100
