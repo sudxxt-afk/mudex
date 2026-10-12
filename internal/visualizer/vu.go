@@ -140,6 +140,49 @@ func RenderWave(samples []float64, width, height int, fgHex, dimHex string) []st
 		height = 12
 	}
 
+	return RenderWaveCols(resampleWaveClean(samples, width), width, height, fgHex, dimHex)
+}
+
+// resampleWaveClean averages each bucket (anti-alias flicker) with NaN/clamp guards.
+func resampleWaveClean(samples []float64, width int) []float64 {
+	if len(samples) == 0 {
+		return make([]float64, width)
+	}
+	per := float64(len(samples)) / float64(width)
+	colVal := make([]float64, width)
+	for c := 0; c < width; c++ {
+		lo := int(float64(c) * per)
+		hi := int(float64(c+1) * per)
+		if hi <= lo {
+			hi = lo + 1
+		}
+		if hi > len(samples) {
+			hi = len(samples)
+		}
+		sum, n := 0.0, 0
+		for _, v := range samples[lo:hi] {
+			if math.IsNaN(v) {
+				continue
+			}
+			sum += v
+			n++
+		}
+		if n > 0 {
+			v := sum / float64(n)
+			if v < -1 {
+				v = -1
+			}
+			if v > 1 {
+				v = 1
+			}
+			colVal[c] = v
+		}
+	}
+	return colVal
+}
+
+// RenderWaveCols renders precomputed per-column values [-1,1].
+func RenderWaveCols(colVal []float64, width, height int, fgHex, dimHex string) []string {
 	fr, fg, fb := parseHexColor(fgHex)
 	dr, dg, db := parseHexColor(dimHex)
 	fgCode := ansiRGB(fr, fg, fb)
@@ -148,26 +191,11 @@ func RenderWave(samples []float64, width, height int, fgHex, dimHex string) []st
 
 	axisRow := height / 2
 
-	// Resample: one value per column.
-	colVal := make([]float64, width)
-	hasData := len(samples) > 0
-	if hasData {
-		for c := 0; c < width; c++ {
-			idx := int(float64(c) * float64(len(samples)) / float64(width))
-			if idx >= len(samples) {
-				idx = len(samples) - 1
-			}
-			v := samples[idx]
-			if math.IsNaN(v) {
-				v = 0
-			}
-			if v < -1 {
-				v = -1
-			}
-			if v > 1 {
-				v = 1
-			}
-			colVal[c] = v
+	hasData := false
+	for _, v := range colVal {
+		if v != 0 {
+			hasData = true
+			break
 		}
 	}
 	waveRow := make([]int, width)

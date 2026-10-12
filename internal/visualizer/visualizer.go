@@ -19,6 +19,7 @@ const (
 type State struct {
 	levels []float64
 	peaks  []float64
+	wave   []float64
 }
 
 // New returns a visualizer state.
@@ -27,6 +28,67 @@ func New() *State {
 		levels: make([]float64, Bars),
 		peaks:  make([]float64, Bars),
 	}
+}
+
+// Wave resamples mono pcm to width columns with linear interpolation and
+// temporal smoothing (lerp toward target), so the oscilloscope glides
+// instead of jumping. State is kept across calls; width changes reset it.
+func (s *State) Wave(pcm []float64, width int) []float64 {
+	if width < 8 {
+		width = 8
+	}
+	if width > 80 {
+		width = 80
+	}
+	target := resampleWave(pcm, width)
+	if len(s.wave) != width {
+		s.wave = append(s.wave[:0], target...)
+		return append([]float64(nil), target...)
+	}
+	out := make([]float64, width)
+	for i := range target {
+		// fast attack, gentle release per column
+		a := 0.55
+		if (target[i] >= 0) != (s.wave[i] >= 0) || abs(target[i]) < abs(s.wave[i]) {
+			a = 0.30
+		}
+		out[i] = s.wave[i] + (target[i]-s.wave[i])*a
+	}
+	s.wave = append(s.wave[:0], out...)
+	return out
+}
+
+func abs(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// resampleWave maps arbitrary-length pcm to width columns by averaging each
+// bucket (anti-alias) — no more flicker from point sampling.
+func resampleWave(pcm []float64, width int) []float64 {
+	out := make([]float64, width)
+	if len(pcm) == 0 {
+		return out
+	}
+	per := float64(len(pcm)) / float64(width)
+	for i := 0; i < width; i++ {
+		lo := int(float64(i) * per)
+		hi := int(float64(i+1) * per)
+		if hi <= lo {
+			hi = lo + 1
+		}
+		if hi > len(pcm) {
+			hi = len(pcm)
+		}
+		sum := 0.0
+		for _, v := range pcm[lo:hi] {
+			sum += v
+		}
+		out[i] = sum / float64(hi-lo)
+	}
+	return out
 }
 
 // Compute takes mono PCM samples in [-1,1], returns Bars levels in [0,1].
@@ -70,16 +132,16 @@ func (s *State) Compute(pcm []float64) []float64 {
 		if mag > 1 {
 			mag = 1
 		}
-		// smoothing: fast attack, slow release
+		// smoothing: fast attack, slow release (tuned for ~30fps ticks)
 		if mag > s.levels[b] {
-			s.levels[b] = mag
+			s.levels[b] = s.levels[b]*0.35 + mag*0.65
 		} else {
-			s.levels[b] = s.levels[b]*0.82 + mag*0.18
+			s.levels[b] = s.levels[b]*0.90 + mag*0.10
 		}
 		if s.levels[b] > s.peaks[b] {
 			s.peaks[b] = s.levels[b]
 		} else {
-			s.peaks[b] -= 0.015
+			s.peaks[b] -= 0.008
 			if s.peaks[b] < s.levels[b] {
 				s.peaks[b] = s.levels[b]
 			}
@@ -119,6 +181,9 @@ func RenderBarsThemed(levels []float64, height int, lowHex, highHex string) []st
 	return renderBarsGradient(levels, height, [3]int{lr, lg, lb}, [3]int{hr, hg, hb})
 }
 
+// edgeChars renders fractional cell fill: index 0 = empty … 8 = full.
+var edgeChars = []string{" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
+
 func renderBarsGradient(levels []float64, height int, low, high [3]int) []string {
 	rows := make([]string, height)
 	for r := 0; r < height; r++ {
@@ -129,12 +194,27 @@ func renderBarsGradient(levels []float64, height int, low, high [3]int) []string
 		blue := low[2] + int(frac*float64(high[2]-low[2]))
 		prefix := ansiRGB(red, green, blue)
 		for _, lv := range levels {
-			fill := int(lv * float64(height))
-			on := (height - 1 - r) < fill
-			if on {
-				line += prefix + "█" + "\x1b[0m"
-			} else {
+			if lv < 0 {
+				lv = 0
+			}
+			if lv > 1 {
+				lv = 1
+			}
+			f := lv * float64(height)
+			full := int(f)
+			edge := int((f - float64(full)) * 8)
+			b := height - 1 - r // cell index from bottom
+			ch := " "
+			switch {
+			case b < full:
+				ch = "█"
+			case b == full && edge > 0:
+				ch = edgeChars[edge]
+			}
+			if ch == " " {
 				line += " "
+			} else {
+				line += prefix + ch + "\x1b[0m"
 			}
 			line += " "
 		}

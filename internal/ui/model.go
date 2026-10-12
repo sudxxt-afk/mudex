@@ -109,7 +109,7 @@ func New(dir string, tracks []library.Track) Model {
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(tickCmd(66*time.Millisecond), fontsCmd)
+	return tea.Batch(tickCmd(33*time.Millisecond), fontsCmd)
 }
 
 // trackAt maps cursor -> *library.Track.
@@ -285,7 +285,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		return m, tickCmd(66 * time.Millisecond)
+		return m, tickCmd(33 * time.Millisecond)
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+p" {
 			m.menuOpen = !m.menuOpen
@@ -466,7 +466,8 @@ func (m Model) vizRows(rightW int) []string {
 		}
 		return visualizer.RenderVU(lv, pk, w, m.theme.Accent, m.theme.Dim, m.theme.Peak)
 	case VizWave:
-		return visualizer.RenderWave(m.player.SpectrumPCM(512), w, 5, m.theme.Accent, m.theme.Dim)
+		cols := m.viz.Wave(m.player.SpectrumPCM(1024), w)
+		return visualizer.RenderWaveCols(cols, w, 5, m.theme.Accent, m.theme.Dim)
 	default:
 		if len(m.levels) == 0 {
 			return nil

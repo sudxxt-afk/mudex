@@ -2,6 +2,7 @@ package visualizer
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -55,5 +56,52 @@ func TestSmoothingReleases(t *testing.T) {
 		if s.levels[i] > high[i] {
 			t.Fatal("levels should decay on silence")
 		}
+	}
+}
+
+func TestBarsFractionalEdge(t *testing.T) {
+	// lv=0.45 of height 6 -> fill 2.7: two full cells + one partial (not full, not empty)
+	rows := RenderBars([]float64{0.45}, 6)
+	partials := "▁▂▃▄▅▆▇"
+	found := false
+	for _, row := range rows {
+		for _, r := range row {
+			if strings.ContainsRune(partials, r) {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("want fractional edge char, rows=%q", rows)
+	}
+}
+
+func TestWaveConverges(t *testing.T) {
+	s := New()
+	s.Wave(make([]float64, 512), 32) // prime with silence
+	target := sine(440, 512, 44100)
+	w1 := s.Wave(target, 32)
+	w2 := s.Wave(target, 32)
+	d1, d2 := 0.0, 0.0
+	// compare against static resample
+	ref := resampleWave(target, 32)
+	for i := range ref {
+		d1 += (w1[i] - ref[i]) * (w1[i] - ref[i])
+		d2 += (w2[i] - ref[i]) * (w2[i] - ref[i])
+	}
+	if !(d2 < d1) {
+		t.Fatalf("wave must converge: d1=%v d2=%v", d1, d2)
+	}
+}
+
+func TestWaveEmptyStable(t *testing.T) {
+	s := New()
+	w := s.Wave(nil, 16)
+	if len(w) != 16 {
+		t.Fatalf("want 16 cols got %d", len(w))
+	}
+	rows := RenderWaveCols(w, 16, 4, "#FFFFFF", "#888888")
+	if len(rows) != 4 {
+		t.Fatalf("want 4 rows got %d", len(rows))
 	}
 }
