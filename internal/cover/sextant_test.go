@@ -3,6 +3,8 @@ package cover
 import (
 	"image"
 	"image/color"
+	"image/jpeg"
+	"os"
 	"strings"
 	"testing"
 )
@@ -116,4 +118,38 @@ func TestSextant256Color(t *testing.T) {
 	if len(lines) == 0 || !strings.Contains(lines[0], "[38;5;") {
 		t.Fatalf("want 256-color escapes, got %q", lines)
 	}
+}
+
+func TestRenderModeHalfForcesBlocks(t *testing.T) {
+	defer SetRenderMode("auto")
+	SetRenderMode("half")
+	lines := RenderBestGraded(mustJPEG(t), 16, 12, true, GradeNone)
+	joined := strings.Join(lines, "\n")
+	if strings.Contains(joined, "🬀") {
+		t.Fatal("half mode must not emit sextants")
+	}
+	if !strings.Contains(joined, "▀") {
+		t.Fatal("half mode must emit half-blocks")
+	}
+}
+
+func mustJPEG(t *testing.T) []byte {
+	t.Helper()
+	img := gradImage(60, 60)
+	var buf strings.Builder
+	_ = buf
+	f, err := os.CreateTemp(t.TempDir(), "c*.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	if err := jpeg.Encode(f, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	data, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

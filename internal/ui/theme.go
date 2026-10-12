@@ -117,6 +117,65 @@ func LoadTheme() Theme {
 	return ThemeByID(cfg.Theme)
 }
 
+// Config is the persisted user settings file.
+type Config struct {
+	Theme   string `json:"theme"`
+	Shuffle bool   `json:"shuffle"`
+	Repeat  bool   `json:"repeat"`
+	Viz     string `json:"viz"`   // auto | bars | vu | wave | off
+	Cover   string `json:"cover"` // auto | sextant | half
+}
+
+// LoadConfig reads settings, tolerant to missing/broken files.
+func LoadConfig() Config {
+	c := Config{Theme: "neon", Viz: "auto", Cover: "auto"}
+	p, err := configPath()
+	if err != nil {
+		return c
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return c
+	}
+	var raw struct {
+		Theme   string `json:"theme"`
+		Shuffle bool   `json:"shuffle"`
+		Repeat  bool   `json:"repeat"`
+		Viz     string `json:"viz"`
+		Cover   string `json:"cover"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return c
+	}
+	if raw.Theme != "" {
+		c.Theme = raw.Theme
+	}
+	c.Shuffle, c.Repeat = raw.Shuffle, raw.Repeat
+	if raw.Viz != "" {
+		c.Viz = raw.Viz
+	}
+	if raw.Cover != "" {
+		c.Cover = raw.Cover
+	}
+	return c
+}
+
+// Save persists the full settings file.
+func (c Config) Save() error {
+	p, err := configPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, data, 0o644)
+}
+
 // Save persists the theme id.
 func (t Theme) Save() error {
 	p, err := configPath()

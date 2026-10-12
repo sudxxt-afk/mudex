@@ -54,7 +54,10 @@ type Model struct {
 	searching  bool
 	shuffle    bool
 	repeat     bool
-	showViz    bool
+	vizMode    string // auto | bars | vu | wave | off
+	coverMode  string // auto | sextant | half
+	menuOpen   bool
+	menuCursor int
 	theme      Theme
 	trueColor  bool
 	width      int
@@ -68,7 +71,15 @@ func New(dir string, tracks []library.Track) Model {
 	ti := textinput.New()
 	ti.Placeholder = "filter…"
 	ti.CharLimit = 64
-	th := LoadTheme()
+	cfg := LoadConfig()
+	if cfg.Viz == "" {
+		cfg.Viz = "auto"
+	}
+	if cfg.Cover == "" {
+		cfg.Cover = "auto"
+	}
+	th := ThemeByID(cfg.Theme)
+	cover.SetRenderMode(cfg.Cover)
 	bar := progress.New(progress.WithSolidFill(th.Accent), progress.WithWidth(40))
 	filtered := make([]int, len(tracks))
 	for i := range tracks {
@@ -85,7 +96,10 @@ func New(dir string, tracks []library.Track) Model {
 		bar:       bar,
 		search:    ti,
 		theme:     th,
-		showViz:   true,
+		shuffle:   cfg.Shuffle,
+		repeat:    cfg.Repeat,
+		vizMode:   cfg.Viz,
+		coverMode: cfg.Cover,
 		trueColor: cover.TrueColor(),
 		width:     100,
 		height:    30,
@@ -186,6 +200,17 @@ func (m *Model) refreshCover() {
 	m.coverSrc = "ascii"
 }
 
+// saveConfig persists theme + toggles + modes.
+func (m *Model) saveConfig() {
+	_ = Config{
+		Theme:   m.theme.ID,
+		Shuffle: m.shuffle,
+		Repeat:  m.repeat,
+		Viz:     m.vizMode,
+		Cover:   m.coverMode,
+	}.Save()
+}
+
 // cycleTheme switches to the next/previous theme, persists it and refreshes
 // theme-dependent views (cover grading, progress bar).
 func (m *Model) cycleTheme(step int) {
@@ -198,7 +223,7 @@ func (m *Model) cycleTheme(step int) {
 		}
 	}
 	m.theme = all[(cur+step+len(all))%len(all)]
-	_ = m.theme.Save()
+	m.saveConfig()
 	m.bar = progress.New(progress.WithSolidFill(m.theme.Accent), progress.WithWidth(min(m.width-20, 70)))
 	m.refreshCover()
 	m.status = "theme: " + m.theme.ID
@@ -251,7 +276,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.loadAndPlay(nx)
 					}
 				}
-			} else if m.showViz {
+			} else if m.vizMode != "off" {
 				if m.player.IsPlaying() {
 					m.levels = m.viz.Compute(m.player.SpectrumPCM(1024))
 				} else {
@@ -262,6 +287,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tickCmd(66 * time.Millisecond)
 	case tea.KeyMsg:
+		if msg.String() == "ctrl+p" {
+			m.menuOpen = !m.menuOpen
+			m.menuCursor = 0
+			return m, nil
+		}
+		if m.menuOpen {
+			switch msg.String() {
+			case "esc":
+				m.menuOpen = false
+				return m, nil
+			case "up", "k":
+				if m.menuCursor > 0 {
+					m.menuCursor--
+				}
+			case "down", "j":
+				if m.menuCursor < len(m.menuRows())-1 {
+					m.menuCursor++
+				}
+			case "left", "h":
+				m.menuStep(-1)
+			case "right", "l", "enter", " ":
+				m.menuStep(1)
+			}
+			return m, nil
+		}
 		if m.searching {
 			switch msg.String() {
 			case "enter", "esc":
@@ -331,10 +381,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.player.VolumeAdd(-1)
 		case "s":
 			m.shuffle = !m.shuffle
+			m.saveConfig()
 		case "r":
 			m.repeat = !m.repeat
+			m.saveConfig()
 		case "v":
-			m.showViz = !m.showViz
+			m.cycleViz(1)
 		case "/":
 			m.searching = true
 			m.search.Focus()
@@ -356,6 +408,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// vizModes lists selectable visualizer modes.
+func vizModes() []string { return []string{"auto", "bars", "vu", "wave", "off"} }
+
+// cycleViz moves vizMode one step, wrapping around.
+func (m *Model) cycleViz(step int) {
+	modes := vizModes()
+	cur := 0
+	for i, v := range modes {
+		if v == m.vizMode {
+			cur = i
+			break
+		}
+	}
+	m.vizMode = modes[(cur+step+len(modes))%len(modes)]
+	m.saveConfig()
+	m.status = "visualizer: " + m.vizMode
+}
+
+// effViz resolves the effective visualizer style ("off" hides it).
+func (m *Model) effViz() VizStyle {
+	switch m.vizMode {
+	case "off":
+		return -1
+	case "bars":
+		return VizBars
+	case "vu":
+		return VizVU
+	case "wave":
+		return VizWave
+	default: // auto
+		return m.theme.Viz
+	}
+}
+
 // vizRows renders the visualizer in the current theme style.
 func (m Model) vizRows(rightW int) []string {
 	w := rightW - 6
@@ -365,7 +451,7 @@ func (m Model) vizRows(rightW int) []string {
 	if w > 44 {
 		w = 44
 	}
-	switch m.theme.Viz {
+	switch m.effViz() {
 	case VizVU:
 		lv, pk := 0.0, 0.0
 		for _, v := range m.levels {
@@ -389,8 +475,86 @@ func (m Model) vizRows(rightW int) []string {
 	}
 }
 
+// menuRows lists settings rows as [label, value].
+func (m Model) menuRows() [][2]string {
+	return [][2]string{
+		{"Theme", m.theme.ID},
+		{"Shuffle", onOff(m.shuffle)},
+		{"Repeat", onOff(m.repeat)},
+		{"Visualizer", m.vizMode},
+		{"Cover", m.coverMode},
+	}
+}
+
+// menuStep changes the current row value by step (-1/+1).
+func (m *Model) menuStep(step int) {
+	switch m.menuCursor {
+	case 0:
+		m.cycleTheme(step)
+	case 1:
+		if step != 0 {
+			m.shuffle = !m.shuffle
+			m.saveConfig()
+			m.status = "shuffle: " + onOff(m.shuffle)
+		}
+	case 2:
+		if step != 0 {
+			m.repeat = !m.repeat
+			m.saveConfig()
+			m.status = "repeat: " + onOff(m.repeat)
+		}
+	case 3:
+		m.cycleViz(step)
+	case 4:
+		modes := []string{"auto", "sextant", "half"}
+		cur := 0
+		for i, v := range modes {
+			if v == m.coverMode {
+				cur = i
+				break
+			}
+		}
+		m.coverMode = modes[(cur+step+len(modes))%len(modes)]
+		cover.SetRenderMode(m.coverMode)
+		m.saveConfig()
+		m.refreshCover()
+		m.status = "cover: " + m.coverMode
+	}
+}
+
+// menuView renders the settings overlay box.
+func (m Model) menuView() string {
+	th := m.theme
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(th.Title))
+	selStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(th.Accent)).Background(lipgloss.Color(th.SelBG))
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(th.Text))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(th.Dim))
+	border := lipgloss.RoundedBorder()
+	if !th.RoundedBorder {
+		border = lipgloss.NormalBorder()
+	}
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("⚙ Settings") + "\n\n")
+	rows := m.menuRows()
+	for i, r := range rows {
+		line := fmt.Sprintf("  %-10s  < %s >", r[0], r[1])
+		if i == m.menuCursor {
+			line = selStyle.Render("▸ " + fmt.Sprintf("%-10s  < %s >", r[0], r[1]))
+		} else {
+			line = textStyle.Render(line)
+		}
+		b.WriteString(line + "\n")
+	}
+	b.WriteString("\n" + dimStyle.Render("j/k move · h/l change · esc close"))
+	box := lipgloss.NewStyle().Border(border).BorderForeground(lipgloss.Color(th.BorderFG)).Padding(1, 3).Render(b.String())
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
 // View implements tea.Model.
 func (m Model) View() string {
+	if m.menuOpen {
+		return m.menuView()
+	}
 	if m.width == 0 {
 		return "loading…"
 	}
@@ -468,7 +632,7 @@ func (m Model) View() string {
 	for _, l := range m.coverLines {
 		rb.WriteString(l + "\n")
 	}
-	if m.showViz {
+	if m.effViz() >= 0 {
 		rb.WriteString("\n")
 		for _, row := range m.vizRows(rightW) {
 			rb.WriteString(row + "\n")
@@ -495,11 +659,11 @@ func (m Model) View() string {
 		posS, durS = "--:--", "--:--"
 	}
 	prog := m.bar.ViewAs(pct)
-	flags := fmt.Sprintf("theme:%s shuffle:%v repeat:%v viz:%v", m.theme.ID, onOff(m.shuffle), onOff(m.repeat), onOff(m.showViz))
+	flags := fmt.Sprintf("theme:%s shuffle:%v repeat:%v viz:%s", m.theme.ID, onOff(m.shuffle), onOff(m.repeat), m.vizMode)
 	bottom := fmt.Sprintf("%s %s / %s   %s\n%s\n%s",
 		prog, posS, durS, dimStyle.Render(flags),
 		dimStyle.Render(m.status),
-		dimStyle.Render("j/k move · enter play · space pause · ←/→ seek · n/p next/prev · +/- vol · s/r shuffle/repeat · v viz · t/T theme · / filter · R rescan · q quit"),
+		dimStyle.Render("j/k move · enter play · space pause · ←/→ seek · n/p next/prev · +/- vol · s/r shuffle/repeat · v viz · t/T theme · ctrl+p settings · / filter · R rescan · q quit"),
 	)
 	_ = os.Getenv("")
 	return top + "\n" + bottom

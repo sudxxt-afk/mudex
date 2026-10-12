@@ -164,6 +164,30 @@ func RenderImageBytes(data []byte, width int, trueColor bool) []string {
 	return RenderHalfBlock(img, width, trueColor, true)
 }
 
+// renderMode overrides sextant auto-detection: "auto" (default), "sextant", "half".
+var renderMode = "auto"
+
+// SetRenderMode sets the cover render mode. Unknown values fall back to auto.
+func SetRenderMode(m string) {
+	switch m {
+	case "sextant", "half":
+		renderMode = m
+	default:
+		renderMode = "auto"
+	}
+}
+
+func useSextants() bool {
+	switch renderMode {
+	case "sextant":
+		return true
+	case "half":
+		return false
+	default:
+		return SextantsOK()
+	}
+}
+
 // RenderBest decodes raw bytes and renders with the best available method:
 // sextants (2x3 px/cell) when the font supports them, half-blocks otherwise.
 func RenderBest(data []byte, width, maxRows int, trueColor bool) []string {
@@ -180,7 +204,7 @@ func RenderBestGraded(data []byte, width, maxRows int, trueColor bool, g Grade) 
 		return nil
 	}
 	img = ApplyGrade(img, g)
-	if SextantsOK() {
+	if useSextants() {
 		return RenderSextants(img, width, maxRows, trueColor)
 	}
 	return RenderHalfBlock(img, width, trueColor, true)
