@@ -8,13 +8,19 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"tui-player/internal/fonts"
 	"tui-player/internal/library"
 	"tui-player/internal/ui"
 )
 
 func main() {
 	recursive := flag.Bool("r", false, "scan subdirectories recursively")
+	installFont := flag.Bool("install-font", false, "install Nerd Font and exit")
 	flag.Parse()
+	if *installFont {
+		fmt.Println(fonts.Ensure())
+		return
+	}
 	dir := "."
 	if flag.NArg() > 0 {
 		dir = flag.Arg(0)

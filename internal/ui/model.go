@@ -15,12 +15,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"tui-player/internal/cover"
+	"tui-player/internal/fonts"
 	"tui-player/internal/library"
 	"tui-player/internal/player"
 	"tui-player/internal/visualizer"
 )
 
 type tickMsg time.Time
+
+// fontsMsg carries the background Nerd Font check/install result.
+type fontsMsg struct{ text string }
+
+func fontsCmd() tea.Msg {
+	if msg := fonts.Ensure(); msg != "" {
+		return fontsMsg{msg}
+	}
+	return nil
+}
 
 func tickCmd(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(t time.Time) tea.Msg { return tickMsg(t) })
@@ -81,7 +92,7 @@ func New(dir string, tracks []library.Track) Model {
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
-	return tickCmd(66 * time.Millisecond)
+	return tea.Batch(tickCmd(66*time.Millisecond), fontsCmd)
 }
 
 // trackAt maps cursor -> *library.Track.
@@ -202,6 +213,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.bar.Width = min(m.width-20, 70)
 		m.refreshCover()
+		return m, nil
+	case fontsMsg:
+		if msg.text != "" {
+			m.status = msg.text
+		}
 		return m, nil
 	case tickMsg:
 		if m.player != nil && m.playing >= 0 {
