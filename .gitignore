@@ -1,0 +1,15 @@
+# Binaries (only at repo root)
+/player
+/mudex
+
+# Temp / measurement dirs
+repro_tmp/
+measuretmp/
+showtmp/
+probetmp/
+
+# Logs
+*.log
+
+# Misc
+.superpowers/
