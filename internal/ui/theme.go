@@ -35,42 +35,47 @@ type Theme struct {
 }
 
 // AllThemes returns all 6 themes in fixed order.
+// Palettes follow proven schemes (Gruvbox, Tokyo Night, neutrals) so that
+// contrast holds on the theme background; see TestThemeContrast.
 func AllThemes() []Theme {
 	return []Theme{
 		{
-			ID: "neon", Title: "#00FFFF", Text: "#E8E8F0", Dim: "#888888",
-			Accent: "#FF5FD2", Accent2: "#00FF9D", Peak: "#FF5FD2",
-			SelBG: "#1a1a2e", BorderFG: "#7D5CFF", AppBG: "",
+			ID: "neon", Title: "#00E5FF", Text: "#E8E8F0", Dim: "#8B8FA3",
+			Accent: "#F471B8", Accent2: "#00E5A0", Peak: "#F471B8",
+			SelBG: "#1a1a2e", BorderFG: "#6D5BD0", AppBG: "",
 			Grade: cover.GradeNone, Viz: VizBars, RoundedBorder: true,
 		},
 		{
-			ID: "lamp", Title: "#FFB000", Text: "#F5E6C8", Dim: "#8A6D4B",
-			Accent: "#FFB000", Accent2: "#FF6A00", Peak: "#FF3B30",
-			SelBG: "#2A1E0E", BorderFG: "#FFB000", AppBG: "#1A120B",
+			// Gruvbox dark
+			ID: "lamp", Title: "#FABD2F", Text: "#EBDBB2", Dim: "#928374",
+			Accent: "#FABD2F", Accent2: "#FE8019", Peak: "#FB4934",
+			SelBG: "#3C3836", BorderFG: "#665C54", AppBG: "#282828",
 			Grade: cover.GradeSepia, Viz: VizVU, RoundedBorder: false,
 		},
 		{
-			ID: "minimal", Title: "#EEEEEE", Text: "#CCCCCC", Dim: "#777777",
-			Accent: "#EEEEEE", Accent2: "#999999", Peak: "#FFFFFF",
-			SelBG: "#222222", BorderFG: "#444444", AppBG: "#111111",
+			ID: "minimal", Title: "#E5E5E5", Text: "#D4D4D4", Dim: "#737373",
+			Accent: "#FAFAFA", Accent2: "#A3A3A3", Peak: "#FFFFFF",
+			SelBG: "#1F1F1F", BorderFG: "#404040", AppBG: "#0A0A0A",
 			Grade: cover.GradeMono, Viz: VizWave, RoundedBorder: false,
 		},
 		{
-			ID: "phosphor", Title: "#66FF66", Text: "#33FF33", Dim: "#1A7A1A",
-			Accent: "#66FF66", Accent2: "#33FF33", Peak: "#FFFF66",
-			SelBG: "#0E1F0E", BorderFG: "#1F5F1F", AppBG: "#0A0F0A",
+			ID: "phosphor", Title: "#5CFF5C", Text: "#3FD83F", Dim: "#1E7A1E",
+			Accent: "#5CFF5C", Accent2: "#2EA82E", Peak: "#E8FF66",
+			SelBG: "#0D1A0D", BorderFG: "#245C24", AppBG: "#070B07",
 			Grade: cover.GradePhosphor, Viz: VizBars, RoundedBorder: true,
 		},
 		{
-			ID: "paper", Title: "#1A1A1A", Text: "#1A1A1A", Dim: "#8A8578",
-			Accent: "#B3541E", Accent2: "#7A3B12", Peak: "#C22F2F",
-			SelBG: "#E4DCC8", BorderFG: "#C9C2B2", AppBG: "#F5F0E6",
+			// Gruvbox light
+			ID: "paper", Title: "#3C3836", Text: "#3C3836", Dim: "#928374",
+			Accent: "#AF3A03", Accent2: "#79740E", Peak: "#9D0006",
+			SelBG: "#EBDDB2", BorderFG: "#D5C4A1", AppBG: "#FBF1C7",
 			Grade: cover.GradeNone, Viz: VizBars, RoundedBorder: false,
 		},
 		{
-			ID: "midnight", Title: "#7DD3FC", Text: "#DCE6F5", Dim: "#5B6B8C",
-			Accent: "#7DD3FC", Accent2: "#3B82F6", Peak: "#F472B6",
-			SelBG: "#16213B", BorderFG: "#274068", AppBG: "#0B1026",
+			// Tokyo Night
+			ID: "midnight", Title: "#7DCFFF", Text: "#C0CAF5", Dim: "#565F89",
+			Accent: "#7AA2F7", Accent2: "#7DCFFF", Peak: "#F7768E",
+			SelBG: "#24283B", BorderFG: "#3B4261", AppBG: "#1A1B26",
 			Grade: cover.GradeNone, Viz: VizBars, RoundedBorder: true,
 		},
 	}
@@ -78,9 +83,9 @@ func AllThemes() []Theme {
 
 // ThemeByID returns the theme with the given id, or neon for unknown ids.
 func ThemeByID(id string) Theme {
-	for _, t := range AllThemes() {
-		if t.ID == id {
-			return t
+	for _, th := range AllThemes() {
+		if th.ID == id {
+			return th
 		}
 	}
 	return AllThemes()[0]
@@ -94,7 +99,7 @@ func configPath() (string, error) {
 	return filepath.Join(home, ".config", "mudex", "config.json"), nil
 }
 
-// LoadTheme reads ~/.config/mudex/config.json {"theme":"<id>"}, neon on any error.
+// LoadTheme reads the saved theme id, falling back to neon on any error.
 func LoadTheme() Theme {
 	p, err := configPath()
 	if err != nil {
@@ -110,13 +115,10 @@ func LoadTheme() Theme {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return ThemeByID("neon")
 	}
-	if cfg.Theme == "" {
-		return ThemeByID("neon")
-	}
 	return ThemeByID(cfg.Theme)
 }
 
-// Save writes the current theme ID to ~/.config/mudex/config.json.
+// Save persists the theme id.
 func (t Theme) Save() error {
 	p, err := configPath()
 	if err != nil {
@@ -125,7 +127,9 @@ func (t Theme) Save() error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
-	data, err := json.Marshal(map[string]string{"theme": t.ID})
+	data, err := json.Marshal(struct {
+		Theme string `json:"theme"`
+	}{Theme: t.ID})
 	if err != nil {
 		return err
 	}

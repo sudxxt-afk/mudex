@@ -108,26 +108,31 @@ func RenderBars(levels []float64, height int) []string {
 	if height > 12 {
 		height = 12
 	}
+	return renderBarsGradient(levels, height, [3]int{20, 255, 255}, [3]int{255, 80, 255})
+}
+
+// RenderBarsThemed is RenderBars with a theme gradient from lowHex (bottom)
+// to highHex (top). Bad hex falls back to white.
+func RenderBarsThemed(levels []float64, height int, lowHex, highHex string) []string {
+	lr, lg, lb := parseHexColor(lowHex)
+	hr, hg, hb := parseHexColor(highHex)
+	return renderBarsGradient(levels, height, [3]int{lr, lg, lb}, [3]int{hr, hg, hb})
+}
+
+func renderBarsGradient(levels []float64, height int, low, high [3]int) []string {
 	rows := make([]string, height)
-	chars := []string{" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
 	for r := 0; r < height; r++ {
 		line := ""
-		// color gradient bottom(cyan)->top(magenta) per row
 		frac := float64(r) / float64(height-1)
-		red := int(20 + frac*235)
-		green := int(255 - frac*175)
-		blue := 255
+		red := low[0] + int(frac*float64(high[0]-low[0]))
+		green := low[1] + int(frac*float64(high[1]-low[1]))
+		blue := low[2] + int(frac*float64(high[2]-low[2]))
 		prefix := ansiRGB(red, green, blue)
 		for _, lv := range levels {
 			fill := int(lv * float64(height))
 			on := (height - 1 - r) < fill
 			if on {
-				// use full block for filled, with per-bar intensity char on top edge
-				if (height-1-r) == fill-1 && len(chars) > 0 {
-					line += prefix + "█" + "\x1b[0m"
-				} else {
-					line += prefix + "█" + "\x1b[0m"
-				}
+				line += prefix + "█" + "\x1b[0m"
 			} else {
 				line += " "
 			}

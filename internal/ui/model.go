@@ -385,7 +385,7 @@ func (m Model) vizRows(rightW int) []string {
 		if len(m.levels) == 0 {
 			return nil
 		}
-		return visualizer.RenderBars(m.levels, 5)
+		return visualizer.RenderBarsThemed(m.levels, 5, m.theme.Accent2, m.theme.Accent)
 	}
 }
 
