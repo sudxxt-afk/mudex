@@ -167,6 +167,11 @@ func RenderImageBytes(data []byte, width int, trueColor bool) []string {
 // RenderBest decodes raw bytes and renders with the best available method:
 // sextants (2x3 px/cell) when the font supports them, half-blocks otherwise.
 func RenderBest(data []byte, width, maxRows int, trueColor bool) []string {
+	return RenderBestGraded(data, width, maxRows, trueColor, GradeNone)
+}
+
+// RenderBestGraded is RenderBest with a color grade applied before rendering.
+func RenderBestGraded(data []byte, width, maxRows int, trueColor bool, g Grade) []string {
 	if len(data) == 0 {
 		return nil
 	}
@@ -174,6 +179,7 @@ func RenderBest(data []byte, width, maxRows int, trueColor bool) []string {
 	if err != nil {
 		return nil
 	}
+	img = ApplyGrade(img, g)
 	if SextantsOK() {
 		return RenderSextants(img, width, maxRows, trueColor)
 	}

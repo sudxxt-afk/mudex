@@ -55,6 +55,7 @@ type Model struct {
 	shuffle    bool
 	repeat     bool
 	showViz    bool
+	theme      Theme
 	trueColor  bool
 	width      int
 	height     int
@@ -67,7 +68,8 @@ func New(dir string, tracks []library.Track) Model {
 	ti := textinput.New()
 	ti.Placeholder = "filter…"
 	ti.CharLimit = 64
-	bar := progress.New(progress.WithDefaultGradient(), progress.WithWidth(40))
+	th := LoadTheme()
+	bar := progress.New(progress.WithSolidFill(th.Accent), progress.WithWidth(40))
 	filtered := make([]int, len(tracks))
 	for i := range tracks {
 		filtered[i] = i
@@ -82,6 +84,7 @@ func New(dir string, tracks []library.Track) Model {
 		levels:    make([]float64, visualizer.Bars),
 		bar:       bar,
 		search:    ti,
+		theme:     th,
 		showViz:   true,
 		trueColor: cover.TrueColor(),
 		width:     100,
@@ -167,7 +170,7 @@ func (m *Model) refreshCover() {
 	if maxRows < 6 {
 		maxRows = 6
 	}
-	if lines := cover.RenderBest(data, w, maxRows, m.trueColor); len(lines) > 0 {
+	if lines := cover.RenderBestGraded(data, w, maxRows, m.trueColor, m.theme.Grade); len(lines) > 0 {
 		if len(lines) > maxRows {
 			lines = lines[:maxRows]
 		}
@@ -181,6 +184,24 @@ func (m *Model) refreshCover() {
 	}
 	m.coverLines = cover.Neonize(cover.FallbackArt(tr.Name, w), int64(len(tr.Name)))
 	m.coverSrc = "ascii"
+}
+
+// cycleTheme switches to the next/previous theme, persists it and refreshes
+// theme-dependent views (cover grading, progress bar).
+func (m *Model) cycleTheme(step int) {
+	all := AllThemes()
+	cur := 0
+	for i, th := range all {
+		if th.ID == m.theme.ID {
+			cur = i
+			break
+		}
+	}
+	m.theme = all[(cur+step+len(all))%len(all)]
+	_ = m.theme.Save()
+	m.bar = progress.New(progress.WithSolidFill(m.theme.Accent), progress.WithWidth(min(m.width-20, 70)))
+	m.refreshCover()
+	m.status = "theme: " + m.theme.ID
 }
 
 func (m *Model) nextIndex(step int) int {
@@ -318,6 +339,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searching = true
 			m.search.Focus()
 			return m, textinput.Blink
+		case "t":
+			m.cycleTheme(1)
+		case "T":
+			m.cycleTheme(-1)
 		case "R":
 			tr, err := library.ScanDir(m.dir, false)
 			if err == nil {
@@ -331,16 +356,58 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// vizRows renders the visualizer in the current theme style.
+func (m Model) vizRows(rightW int) []string {
+	w := rightW - 6
+	if w < 8 {
+		w = 8
+	}
+	if w > 44 {
+		w = 44
+	}
+	switch m.theme.Viz {
+	case VizVU:
+		lv, pk := 0.0, 0.0
+		for _, v := range m.levels {
+			if v > lv {
+				lv = v
+			}
+		}
+		for _, v := range m.viz.Peaks() {
+			if v > pk {
+				pk = v
+			}
+		}
+		return visualizer.RenderVU(lv, pk, w, m.theme.Accent, m.theme.Dim, m.theme.Peak)
+	case VizWave:
+		return visualizer.RenderWave(m.player.SpectrumPCM(512), w, 5, m.theme.Accent, m.theme.Dim)
+	default:
+		if len(m.levels) == 0 {
+			return nil
+		}
+		return visualizer.RenderBars(m.levels, 5)
+	}
+}
+
 // View implements tea.Model.
 func (m Model) View() string {
 	if m.width == 0 {
 		return "loading…"
 	}
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF"))
-	selStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF5FD2")).Background(lipgloss.Color("#1a1a2e"))
-	playStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF9D"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-	neonBorder := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#7D5CFF")).Padding(0, 1)
+	th := m.theme
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(th.Title))
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(th.Text))
+	selStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(th.Accent)).Background(lipgloss.Color(th.SelBG))
+	playStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(th.Accent2))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(th.Dim))
+	border := lipgloss.RoundedBorder()
+	if !th.RoundedBorder {
+		border = lipgloss.NormalBorder()
+	}
+	panel := lipgloss.NewStyle().Border(border).BorderForeground(lipgloss.Color(th.BorderFG)).Padding(0, 1)
+	if th.AppBG != "" {
+		panel = panel.Background(lipgloss.Color(th.AppBG))
+	}
 
 	// left: file list
 	leftW := m.width * 42 / 100
@@ -383,7 +450,7 @@ func (m Model) View() string {
 		}
 		lb.WriteString(line + "\n")
 	}
-	left := neonBorder.Width(leftW).Height(listH).Render(lb.String())
+	left := panel.Width(leftW).Height(listH).Render(textStyle.Render(lb.String()))
 
 	// right: cover + meta + viz
 	var rb strings.Builder
@@ -404,13 +471,13 @@ func (m Model) View() string {
 	for _, l := range m.coverLines {
 		rb.WriteString(l + "\n")
 	}
-	if m.showViz && len(m.levels) > 0 {
+	if m.showViz {
 		rb.WriteString("\n")
-		for _, row := range visualizer.RenderBars(m.levels, 5) {
+		for _, row := range m.vizRows(rightW) {
 			rb.WriteString(row + "\n")
 		}
 	}
-	right := neonBorder.Width(rightW).Height(listH).Render(rb.String())
+	right := panel.Width(rightW).Height(listH).Render(textStyle.Render(rb.String()))
 
 	top := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 
@@ -431,11 +498,11 @@ func (m Model) View() string {
 		posS, durS = "--:--", "--:--"
 	}
 	prog := m.bar.ViewAs(pct)
-	flags := fmt.Sprintf("shuffle:%v repeat:%v viz:%v", onOff(m.shuffle), onOff(m.repeat), onOff(m.showViz))
+	flags := fmt.Sprintf("theme:%s shuffle:%v repeat:%v viz:%v", m.theme.ID, onOff(m.shuffle), onOff(m.repeat), onOff(m.showViz))
 	bottom := fmt.Sprintf("%s %s / %s   %s\n%s\n%s",
 		prog, posS, durS, dimStyle.Render(flags),
 		dimStyle.Render(m.status),
-		dimStyle.Render("j/k move · enter play · space pause · ←/→ seek · n/p next/prev · +/- vol · s/r shuffle/repeat · v viz · / filter · R rescan · q quit"),
+		dimStyle.Render("j/k move · enter play · space pause · ←/→ seek · n/p next/prev · +/- vol · s/r shuffle/repeat · v viz · t/T theme · / filter · R rescan · q quit"),
 	)
 	_ = os.Getenv("")
 	return top + "\n" + bottom
