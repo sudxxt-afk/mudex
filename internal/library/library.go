@@ -127,7 +127,7 @@ func trackFromPath(full string, e os.DirEntry) (Track, bool) {
 		Ext:      ext,
 		Size:     fi.Size(),
 		ModTime:  fi.ModTime(),
-		Duration: ProbeDuration(full),
+		Duration: FastDuration(full),
 	}, true
 }
 

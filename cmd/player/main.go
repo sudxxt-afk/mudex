@@ -1,4 +1,4 @@
-// Command player: neon TUI music player. Usage: player [dir] [-r]
+// Command player: neon TUI music player with folder browser. Usage: player [dir]
 package main
 
 import (
@@ -9,12 +9,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"tui-player/internal/fonts"
-	"tui-player/internal/library"
 	"tui-player/internal/ui"
 )
 
 func main() {
-	recursive := flag.Bool("r", false, "scan subdirectories recursively")
 	installFont := flag.Bool("install-font", false, "install Nerd Font and exit")
 	flag.Parse()
 	if *installFont {
@@ -30,16 +28,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "not a directory: %s\n", dir)
 		os.Exit(1)
 	}
-	tracks, err := library.ScanDir(dir, *recursive)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "scan:", err)
-		os.Exit(1)
-	}
-	if len(tracks) == 0 {
-		fmt.Fprintf(os.Stderr, "no audio files in %s (mp3/flac/wav/ogg/opus/m4a/aac/wma)\n", dir)
-		os.Exit(1)
-	}
-	m := ui.New(dir, tracks)
+	m := ui.New(dir)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "tui:", err)

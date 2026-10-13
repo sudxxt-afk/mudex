@@ -279,6 +279,13 @@ func (p *Player) Duration() int {
 // SampleRate returns output rate.
 func (p *Player) SampleRate() int { return outRate }
 
+// SetLength updates known track length (late duration probe).
+func (p *Player) SetLength(frames int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.length = frames
+}
+
 // Frames converts a duration to output frames.
 func (p *Player) Frames(d time.Duration) int { return int(d.Seconds() * outRate) }
 

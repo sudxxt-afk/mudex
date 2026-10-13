@@ -23,6 +23,21 @@ import (
 
 type tickMsg time.Time
 
+// durMsg carries a late duration probe result (ffprobe fallback).
+type durMsg struct {
+	path string
+	dur  time.Duration
+}
+
+func probeDurCmd(path string) tea.Cmd {
+	return func() tea.Msg {
+		if d := library.ProbeDuration(path); d > 0 {
+			return durMsg{path, d}
+		}
+		return nil
+	}
+}
+
 // fontsMsg carries the background Nerd Font check/install result.
 type fontsMsg struct{ text string }
 
@@ -41,9 +56,12 @@ func tickCmd(d time.Duration) tea.Cmd {
 type Model struct {
 	dir        string
 	tracks     []library.Track
-	filtered   []int // indices into tracks
-	cursor     int   // position in filtered
-	playing    int   // index in tracks, -1 = none
+	entries    []entry // dirs first, then audio files (filtered)
+	cursor     int     // position in entries
+	playing    int     // index into tracks of playingDir, -1 = none
+	playingDir string
+	nowPlaying library.Track
+	hasPlaying bool
 	player     *player.Player
 	viz        *visualizer.State
 	levels     []float64
@@ -66,8 +84,16 @@ type Model struct {
 	errCount   int
 }
 
-// New builds a model for dir.
-func New(dir string, tracks []library.Track) Model {
+// entry is one browser row: a subdirectory or an audio file.
+type entry struct {
+	isDir bool
+	name  string
+	path  string
+	track int // index into tracks when !isDir, else -1
+}
+
+// New builds a model browsing dir.
+func New(dir string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "filter…"
 	ti.CharLimit = 64
@@ -81,14 +107,12 @@ func New(dir string, tracks []library.Track) Model {
 	th := ThemeByID(cfg.Theme)
 	cover.SetRenderMode(cfg.Cover)
 	bar := progress.New(progress.WithSolidFill(th.Accent), progress.WithWidth(40))
-	filtered := make([]int, len(tracks))
-	for i := range tracks {
-		filtered[i] = i
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		abs = dir
 	}
-	return Model{
-		dir:       dir,
-		tracks:    tracks,
-		filtered:  filtered,
+	m := Model{
+		dir:       abs,
 		playing:   -1,
 		player:    player.New(),
 		viz:       visualizer.New(),
@@ -103,8 +127,54 @@ func New(dir string, tracks []library.Track) Model {
 		trueColor: cover.TrueColor(),
 		width:     100,
 		height:    30,
-		status:    fmt.Sprintf("%d files in %s", len(tracks), dir),
+		status:    "",
 	}
+	m.browse(m.dir)
+	return m
+}
+
+// browse lists dir: subdirectories first, then audio files.
+func (m *Model) browse(dir string) {
+	m.dir = dir
+	m.cursor = 0
+	m.tracks = nil
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		m.status = "ERR: " + err.Error()
+		m.entries = nil
+		return
+	}
+	_ = ents
+	tr, err := library.ScanDir(dir, false)
+	if err != nil {
+		m.status = "ERR: " + err.Error()
+		m.entries = nil
+		return
+	}
+	m.tracks = tr
+	m.applyFilter()
+	ndirs := 0
+	for _, e := range m.entries {
+		if e.isDir {
+			ndirs++
+		}
+	}
+	m.status = fmt.Sprintf("%s — %d dirs, %d tracks", shortPath(dir), ndirs, len(tr))
+}
+
+// shortPath compresses a path for the header: ~ for home, … for deep tails.
+func shortPath(p string) string {
+	if home, err := os.UserHomeDir(); err == nil && p == home {
+		return "~"
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, home+string(os.PathSeparator)) {
+		p = "~" + strings.TrimPrefix(p, home)
+	}
+	parts := strings.Split(p, string(os.PathSeparator))
+	if len(parts) > 4 {
+		return "…" + string(os.PathSeparator) + filepath.Join(parts[len(parts)-2:]...)
+	}
+	return p
 }
 
 // Init implements tea.Model.
@@ -112,57 +182,79 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(tickCmd(33*time.Millisecond), fontsCmd)
 }
 
-// trackAt maps cursor -> *library.Track.
-func (m *Model) trackAt(i int) *library.Track {
-	if i < 0 || i >= len(m.filtered) {
+// entryAt maps cursor -> browser entry.
+func (m *Model) entryAt(i int) *entry {
+	if i < 0 || i >= len(m.entries) {
 		return nil
 	}
-	return &m.tracks[m.filtered[i]]
+	return &m.entries[i]
 }
 
 func (m Model) currentTrack() *library.Track {
-	if m.playing < 0 || m.playing >= len(m.tracks) {
+	if !m.hasPlaying {
 		return nil
 	}
-	return &m.tracks[m.playing]
+	tr := m.nowPlaying
+	return &tr
 }
 
 func (m *Model) applyFilter() {
 	q := strings.ToLower(strings.TrimSpace(m.search.Value()))
-	m.filtered = m.filtered[:0]
-	for i := range m.tracks {
-		if q == "" || strings.Contains(strings.ToLower(m.tracks[i].Name), q) {
-			m.filtered = append(m.filtered, i)
+	m.entries = m.entries[:0]
+	if ents, err := os.ReadDir(m.dir); err == nil {
+		for _, e := range ents {
+			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			if q == "" || strings.Contains(strings.ToLower(e.Name()), q) {
+				m.entries = append(m.entries, entry{isDir: true, name: e.Name(), path: filepath.Join(m.dir, e.Name()), track: -1})
+			}
 		}
 	}
-	if m.cursor >= len(m.filtered) {
-		m.cursor = len(m.filtered) - 1
+	for i := range m.tracks {
+		name := m.tracks[i].DisplayTitle()
+		if q == "" || strings.Contains(strings.ToLower(name), q) ||
+			strings.Contains(strings.ToLower(m.tracks[i].Artist), q) {
+			m.entries = append(m.entries, entry{isDir: false, name: name, path: m.tracks[i].Path, track: i})
+		}
 	}
-	if m.cursor < 0 && len(m.filtered) > 0 {
+	if m.cursor >= len(m.entries) {
+		m.cursor = len(m.entries) - 1
+	}
+	if m.cursor < 0 && len(m.entries) > 0 {
 		m.cursor = 0
 	}
 }
 
-// loadAndPlay loads tracks[ti] and starts it.
-func (m *Model) loadAndPlay(ti int) {
+// loadAndPlay loads tracks[ti] and starts it instantly. When the duration
+// was unknown at scan time it returns a background probe Cmd that fills the
+// progress bar late instead of blocking startup.
+func (m *Model) loadAndPlay(ti int) tea.Cmd {
 	if ti < 0 || ti >= len(m.tracks) {
-		return
+		return nil
 	}
 	tr := &m.tracks[ti]
 	m.player.Close()
 	if err := m.player.Load(tr.Path, m.player.Frames(tr.Duration)); err != nil {
 		m.status = "ERR: " + err.Error()
 		m.errCount++
-		return
+		return nil
 	}
 	if err := m.player.Play(); err != nil {
 		m.status = "ERR audio: " + err.Error()
 		m.errCount++
-		return
+		return nil
 	}
 	m.playing = ti
+	m.playingDir = m.dir
+	m.nowPlaying = *tr
+	m.hasPlaying = true
 	m.status = "▶ " + tr.DisplayTitle() + tr.DisplayArtist()
 	m.refreshCover()
+	if tr.Duration <= 0 {
+		return probeDurCmd(tr.Path)
+	}
+	return nil
 }
 
 func (m *Model) refreshCover() {
@@ -230,25 +322,29 @@ func (m *Model) cycleTheme(step int) {
 }
 
 func (m *Model) nextIndex(step int) int {
-	if len(m.filtered) == 0 {
+	if len(m.tracks) == 0 {
 		return -1
 	}
-	// find cursor pos of playing track
+	// find pos of playing track in current dir
 	pos := -1
-	for i, ti := range m.filtered {
-		if ti == m.playing {
-			pos = i
-			break
+	if m.hasPlaying && m.playingDir == m.dir {
+		for i := range m.tracks {
+			if m.tracks[i].Path == m.nowPlaying.Path {
+				pos = i
+				break
+			}
 		}
 	}
 	if pos < 0 {
-		return m.filtered[0]
+		if m.shuffle && step > 0 {
+			return rand.Intn(len(m.tracks))
+		}
+		return 0
 	}
 	if m.shuffle && step > 0 {
-		return m.filtered[rand.Intn(len(m.filtered))]
+		return rand.Intn(len(m.tracks))
 	}
-	pos = (pos + step + len(m.filtered)) % len(m.filtered)
-	return m.filtered[pos]
+	return (pos + step + len(m.tracks)) % len(m.tracks)
 }
 
 // Update implements tea.Model.
@@ -265,16 +361,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.text
 		}
 		return m, nil
+	case durMsg:
+		if m.hasPlaying && msg.path == m.nowPlaying.Path && msg.dur > 0 {
+			m.nowPlaying.Duration = msg.dur
+			m.player.SetLength(m.player.Frames(msg.dur))
+			for i := range m.tracks {
+				if m.tracks[i].Path == msg.path {
+					m.tracks[i].Duration = msg.dur
+				}
+			}
+		}
+		return m, nil
 	case tickMsg:
 		if m.player != nil && m.playing >= 0 {
 			if m.player.Finished() {
 				if m.repeat {
-					m.loadAndPlay(m.playing)
-				} else {
-					nx := m.nextIndex(1)
-					if nx >= 0 {
-						m.loadAndPlay(nx)
-					}
+					// restart in place: works even when browsed away
+					m.player.SeekBy(-1 << 30)
+					return m, nil
+				}
+				if nx := m.nextIndex(1); nx >= 0 {
+					return m, m.loadAndPlay(nx)
 				}
 			} else if m.vizMode != "off" {
 				if m.player.IsPlaying() {
@@ -334,46 +441,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.filtered)-1 {
+			if m.cursor < len(m.entries)-1 {
 				m.cursor++
 			}
-		case "enter":
-			if t := m.trackAt(m.cursor); t != nil {
-				for i, tr := range m.tracks {
-					if tr.Path == t.Path {
-						m.loadAndPlay(i)
-						break
-					}
+		case "enter", "right", "l":
+			if e := m.entryAt(m.cursor); e != nil {
+				if e.isDir {
+					m.browse(e.path)
+				} else {
+					return m, m.loadAndPlay(e.track)
 				}
 			}
 		case " ":
-			if m.playing < 0 {
-				if t := m.trackAt(m.cursor); t != nil {
-					for i, tr := range m.tracks {
-						if tr.Path == t.Path {
-							m.loadAndPlay(i)
-							break
-						}
+			if e := m.entryAt(m.cursor); e != nil && !e.isDir {
+				if m.hasPlaying && m.nowPlaying.Path == e.path {
+					if err := m.player.Toggle(); err != nil {
+						m.status = "ERR: " + err.Error()
+					} else if m.player.IsPlaying() {
+						m.status = "▶ " + m.nowPlaying.DisplayTitle() + m.nowPlaying.DisplayArtist()
+					} else {
+						m.status = "⏸ " + m.nowPlaying.DisplayTitle() + m.nowPlaying.DisplayArtist()
 					}
+				} else {
+					return m, m.loadAndPlay(e.track)
 				}
-			} else if err := m.player.Toggle(); err != nil {
-				m.status = "ERR: " + err.Error()
-			} else if m.player.IsPlaying() {
-				m.status = "▶ " + m.tracks[m.playing].Name
-			} else {
-				m.status = "⏸ " + m.tracks[m.playing].DisplayTitle() + m.tracks[m.playing].DisplayArtist()
+			} else if m.hasPlaying {
+				if err := m.player.Toggle(); err != nil {
+					m.status = "ERR: " + err.Error()
+				} else if m.player.IsPlaying() {
+					m.status = "▶ " + m.nowPlaying.DisplayTitle() + m.nowPlaying.DisplayArtist()
+				} else {
+					m.status = "⏸ " + m.nowPlaying.DisplayTitle() + m.nowPlaying.DisplayArtist()
+				}
 			}
 		case "n":
 			if nx := m.nextIndex(1); nx >= 0 {
-				m.loadAndPlay(nx)
+				return m, m.loadAndPlay(nx)
 			}
 		case "p":
 			if nx := m.nextIndex(-1); nx >= 0 {
-				m.loadAndPlay(nx)
+				return m, m.loadAndPlay(nx)
 			}
-		case "left", "h":
+		case "left", "h", "backspace":
+			parent := filepath.Dir(m.dir)
+			if parent != m.dir {
+				m.browse(parent)
+			}
+		case ",", "<":
 			m.player.SeekBy(-5 * m.player.SampleRate())
-		case "right", "l":
+		case ".", ">":
 			m.player.SeekBy(5 * m.player.SampleRate())
 		case "+", "=":
 			m.player.VolumeAdd(1)
@@ -396,12 +512,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "T":
 			m.cycleTheme(-1)
 		case "R":
-			tr, err := library.ScanDir(m.dir, false)
-			if err == nil {
-				m.tracks = tr
-				m.applyFilter()
-				m.status = fmt.Sprintf("rescan: %d files", len(tr))
-			}
+			m.browse(m.dir)
 		}
 		return m, nil
 	}
@@ -586,35 +697,51 @@ func (m Model) View() string {
 		listH = 8
 	}
 	var lb strings.Builder
-	lb.WriteString(titleStyle.Render("♪ "+filepath.Base(m.dir)) + "\n")
+	lb.WriteString(titleStyle.Render("♪ "+shortPath(m.dir)) + "\n")
+	lb.WriteString(dimStyle.Render("↵ open · ⌫ up") + "\n")
 	if m.searching {
 		lb.WriteString(m.search.View() + "\n")
 	}
 	start := 0
-	if m.cursor > listH-4 {
-		start = m.cursor - (listH - 4)
+	if m.cursor > listH-5 {
+		start = m.cursor - (listH - 5)
 	}
-	end := start + listH - 2
-	if end > len(m.filtered) {
-		end = len(m.filtered)
+	end := start + listH - 3
+	if end > len(m.entries) {
+		end = len(m.entries)
 	}
 	for i := start; i < end; i++ {
-		ti := m.filtered[i]
-		tr := m.tracks[ti]
-		icon := fileIcon(tr.Ext)
-		line := fmt.Sprintf("%s %s", icon, truncate(tr.DisplayTitle()+tr.DisplayArtist(), leftW-8))
-		if ti == m.playing {
-			eq := "▶"
-			if !m.player.IsPlaying() {
-				eq = "⏸"
-			}
-			line = playStyle.Render(eq + " " + line)
-		} else if i == m.cursor {
-			line = selStyle.Render("▸ " + line)
+		e := m.entries[i]
+		isPlayingRow := false
+		var line string
+		if e.isDir {
+			line = fmt.Sprintf("📁 %s", truncate(e.name, leftW-8))
 		} else {
-			line = "  " + line
+			tr := m.tracks[e.track]
+			icon := fileIcon(tr.Ext)
+			line = fmt.Sprintf("%s %s", icon, truncate(tr.DisplayTitle()+tr.DisplayArtist(), leftW-8))
+			if m.hasPlaying && tr.Path == m.nowPlaying.Path {
+				isPlayingRow = true
+				eq := "▶"
+				if !m.player.IsPlaying() {
+					eq = "⏸"
+				}
+				line = playStyle.Render(eq + " " + line)
+			}
+		}
+		if !isPlayingRow {
+			if i == m.cursor {
+				line = selStyle.Render("▸ " + line)
+			} else {
+				line = "  " + line
+			}
+		} else if i == m.cursor {
+			line = "▸ " + line
 		}
 		lb.WriteString(line + "\n")
+	}
+	if len(m.entries) == 0 {
+		lb.WriteString(dimStyle.Render("  empty — try another folder") + "\n")
 	}
 	left := panel.Width(leftW).Height(listH).Render(textStyle.Render(lb.String()))
 
@@ -668,7 +795,7 @@ func (m Model) View() string {
 	bottom := fmt.Sprintf("%s %s / %s   %s\n%s\n%s",
 		prog, posS, durS, dimStyle.Render(flags),
 		dimStyle.Render(m.status),
-		dimStyle.Render("j/k move · enter play · space pause · ←/→ seek · n/p next/prev · +/- vol · s/r shuffle/repeat · v viz · t/T theme · ctrl+p settings · / filter · R rescan · q quit"),
+		dimStyle.Render("j/k move · enter open/play · ⌫ up · space pause · ,/. seek · n/p next/prev · +/- vol · s/r shuffle/repeat · v viz · t/T theme · ctrl+p settings · / filter · R rescan · q quit"),
 	)
 	_ = os.Getenv("")
 	return top + "\n" + bottom
