@@ -9,7 +9,7 @@
 > Работает в любом Linux-терминале: обложка рисуется клетками (`▀` + ANSI),
 > без Kitty Graphics / Sixel. Неоновый FFT-визуализатор, чистый Go. ⚡
 
-![mudex demo](assets/demo.svg)
+![mudex demo](assets/preview.svg)
 
 ## ✨ Фишки
 
