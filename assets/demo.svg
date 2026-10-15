@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="420" font-family="monospace">
+  <rect width="860" height="420" rx="14" fill="#0a0e1a"/>
+  <rect x="14" y="14" width="832" height="392" rx="10" fill="none" stroke="#00e5ff" stroke-width="2"/>
+  <text x="34" y="44" font-size="15" fill="#00e5ff">♪ mudex</text>
+  <text x="826" y="44" text-anchor="end" font-size="12" fill="#8b8fa3">neon · bars · 44.1kHz</text>
+  <line x1="14" y1="58" x2="846" y2="58" stroke="#00e5ff" stroke-width="1" opacity="0.4"/>
+  <g font-size="13">
+    <text x="34" y="86" fill="#565f89">../</text>
+    <text x="34" y="110" fill="#00e5ff">▶ synthwave/</text>
+    <text x="34" y="134" fill="#c0caf5">  midnight-drive.flac</text>
+    <text x="34" y="158" fill="#00e5ff">▶ night-drive.mp3</text>
+    <text x="34" y="182" fill="#8b8fa3">  laser-rain.ogg</text>
+    <text x="34" y="206" fill="#8b8fa3">  chrome-sunset.wav</text>
+  </g>
+  <line x1="300" y1="58" x2="300" y2="340" stroke="#00e5ff" stroke-width="1" opacity="0.4"/>
+  <g>
+    <rect x="330" y="76" width="150" height="110" rx="6" fill="#131726" stroke="#bb9af7" stroke-width="1.5"/>
+    <text x="405" y="118" text-anchor="middle" font-size="12" fill="#bb9af7">▀▄ neon cover ▄▀</text>
+    <text x="405" y="140" text-anchor="middle" font-size="12" fill="#bb9af7">▄▀ half-block ▀▄</text>
+    <text x="405" y="164" text-anchor="middle" font-size="11" fill="#565f89">APIC / folder.jpg</text>
+    <text x="510" y="96" font-size="14" fill="#e8e8f0">night-drive.mp3</text>
+    <text x="510" y="118" font-size="12" fill="#8b8fa3">Neon Rider — 03:47</text>
+    <text x="510" y="140" font-size="12" fill="#8b8fa3">MP3 · 320 kbps · 44.1k</text>
+    <g fill="#00e5ff">
+      <rect x="330" y="200" width="14" height="60" rx="2"/>
+      <rect x="350" y="220" width="14" height="40" rx="2"/>
+      <rect x="370" y="190" width="14" height="70" rx="2"/>
+      <rect x="390" y="210" width="14" height="50" rx="2"/>
+      <rect x="410" y="180" width="14" height="80" rx="2" fill="#bb9af7"/>
+      <rect x="430" y="215" width="14" height="45" rx="2"/>
+      <rect x="450" y="195" width="14" height="65" rx="2"/>
+      <rect x="470" y="225" width="14" height="35" rx="2"/>
+      <rect x="490" y="205" width="14" height="55" rx="2" fill="#bb9af7"/>
+      <rect x="510" y="230" width="14" height="30" rx="2"/>
+      <rect x="530" y="200" width="14" height="60" rx="2"/>
+      <rect x="550" y="218" width="14" height="42" rx="2"/>
+    </g>
+    <text x="330" y="280" font-size="11" fill="#565f89">FFT 1024 · 24 bars · log-scale · 15fps</text>
+  </g>
+  <line x1="14" y1="340" x2="846" y2="340" stroke="#00e5ff" stroke-width="1" opacity="0.4"/>
+  <rect x="34" y="356" width="560" height="10" rx="5" fill="#24283b"/>
+  <rect x="34" y="356" width="340" height="10" rx="5" fill="#00e5ff"/>
+  <text x="610" y="366" font-size="12" fill="#c0caf5">01:24 / 03:47 · 🔊 80%</text>
+  <text x="34" y="392" font-size="11" fill="#565f89">j/k navigate · space pause · n/p track · s shuffle · r repeat · v viz · t theme · q quit</text>
+</svg>
