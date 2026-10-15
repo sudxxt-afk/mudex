@@ -22,20 +22,20 @@
     <text x="510" y="118" font-size="12" fill="#8b8fa3">Neon Rider — 03:47</text>
     <text x="510" y="140" font-size="12" fill="#8b8fa3">MP3 · 320 kbps · 44.1k</text>
     <g fill="#00e5ff">
-      <rect x="330" y="200" width="14" height="60" rx="2"/>
-      <rect x="350" y="220" width="14" height="40" rx="2"/>
-      <rect x="370" y="190" width="14" height="70" rx="2"/>
-      <rect x="390" y="210" width="14" height="50" rx="2"/>
-      <rect x="410" y="180" width="14" height="80" rx="2" fill="#bb9af7"/>
-      <rect x="430" y="215" width="14" height="45" rx="2"/>
-      <rect x="450" y="195" width="14" height="65" rx="2"/>
-      <rect x="470" y="225" width="14" height="35" rx="2"/>
-      <rect x="490" y="205" width="14" height="55" rx="2" fill="#bb9af7"/>
-      <rect x="510" y="230" width="14" height="30" rx="2"/>
-      <rect x="530" y="200" width="14" height="60" rx="2"/>
-      <rect x="550" y="218" width="14" height="42" rx="2"/>
+      <rect x="330" y="232" width="14" height="60" rx="2"/>
+      <rect x="350" y="252" width="14" height="40" rx="2"/>
+      <rect x="370" y="222" width="14" height="70" rx="2"/>
+      <rect x="390" y="242" width="14" height="50" rx="2"/>
+      <rect x="410" y="212" width="14" height="80" rx="2" fill="#bb9af7"/>
+      <rect x="430" y="247" width="14" height="45" rx="2"/>
+      <rect x="450" y="227" width="14" height="65" rx="2"/>
+      <rect x="470" y="257" width="14" height="35" rx="2"/>
+      <rect x="490" y="237" width="14" height="55" rx="2" fill="#bb9af7"/>
+      <rect x="510" y="262" width="14" height="30" rx="2"/>
+      <rect x="530" y="232" width="14" height="60" rx="2"/>
+      <rect x="550" y="250" width="14" height="42" rx="2"/>
     </g>
-    <text x="330" y="280" font-size="11" fill="#565f89">FFT 1024 · 24 bars · log-scale · 15fps</text>
+    <text x="330" y="312" font-size="11" fill="#565f89">FFT 1024 · 24 bars · log-scale · 15fps</text>
   </g>
   <line x1="14" y1="340" x2="846" y2="340" stroke="#00e5ff" stroke-width="1" opacity="0.4"/>
   <rect x="34" y="356" width="560" height="10" rx="5" fill="#24283b"/>
